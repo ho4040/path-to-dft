@@ -1,29 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>Track & Fourier</title>
-
-  <!-- [SEO] Basic Meta Tags -->
-  <meta name="description" content="A demo where you can draw a track on a canvas, apply Fourier transforms, and visualize the animation in real-time.">
-  <meta name="keywords" content="Fourier, Track, Animation, Demo, Catmull-Rom, JavaScript">
-  <meta name="author" content="Rick choi">
-
-  <!-- [SEO] Open Graph (OG) Tags -->
-  <meta property="og:title" content="Canvas Track & Fourier Demo">
-  <meta property="og:description" content="Draw a path on the canvas, sample it, apply a Fourier transform, and watch the resulting animation of a moving green ball.">
-  <!-- <meta property="og:image" content="URL to your preview image" /> -->
-  <!-- <meta property="og:url" content="URL of this page" /> -->
-
-  <!-- [SEO] Additional (optional)
-       <link rel="canonical" href="https://example.com/your-page-url" />
-  -->
-
+  <title>Path & Fourier</title>
   <style>
     html, body {
       margin: 0; padding: 0;
       width: 100%; height: 100%;
       font-family: sans-serif;
+      font-size: 13px; /* [NEW] 폰트 전반적으로 축소 */
       box-sizing: border-box;
     }
 
@@ -31,37 +16,73 @@
       display: flex;
       flex-direction: row;
       width: 100%;
-      height: 100vh; /* Use full viewport height */
+      height: 100vh; /* 화면 전체 높이 사용 */
     }
 
-    /* Left pane: Canvas */
+    /* 왼쪽 판: 캔버스 영역 */
     #leftPane {
       flex: 3;
       position: relative;
       background: #ccc;
       overflow: hidden;
     }
-
-    /* Right pane: Controls */
+    /* 오른쪽 판: 위아래 2분할 (controls 위 / codeOutput 아래) */
     #rightPane {
       flex: 1;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+      background: #fafafa;
+    }
+    /* 상단(컨트롤) */
+    #controlsWrapper {
+      flex: 1 0 50%; /* 높이 50% */
       display: flex;
       flex-direction: column;
       padding: 10px;
       box-sizing: border-box;
       overflow-y: auto;
-      background: #fafafa;
+      min-height: 0; /* flex overflow 이슈 방지 */
+    }
+    /* 하단(코드) */
+    #codeOutputWrapper {
+      flex: 1 0 50%; /* 높이 50% */
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+      box-sizing: border-box;
     }
 
-    /* Canvas fills the left pane. 
-       The actual drawing size is synchronized in JS. */
+    /* 안내 패널 */
+    #helpPanel {
+      padding: 8px;
+      background: #eef;
+      margin-bottom: 10px;
+      border-radius: 4px;
+      line-height: 1.4;
+      font-size: 13px;
+    }
+    #helpPanel strong {
+      color: #333;
+    }
+
+    /* 캔버스 및 초기안내 텍스트 */
     #myCanvas {
       display: block;
       width: 100%;
       height: 100%;
     }
+    #drawHint {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(0,0,0,0.3);
+      font-size: 20px; 
+      text-align: center;
+      pointer-events: none; /* 클릭 불가 */
+    }
 
-    /* Red anchors (points) */
+    /* 앵커(빨간 점) & 앵커 컨테이너 */
     #anchorsContainer {
       position: absolute;
       top: 0; left: 0;
@@ -75,13 +96,13 @@
       background: red;
       transform: translate(-4px, -4px);
       cursor: pointer;
-      pointer-events: auto;
+      pointer-events: auto; /* 점 자체는 클릭 가능 */
     }
     .anchor.dragging {
       background: orange;
     }
 
-    /* Green circle for animation */
+    /* 녹색 공 (애니메이션) */
     #greenCircle {
       position: absolute;
       width: 10px; height: 10px;
@@ -92,7 +113,7 @@
       z-index: 999;
     }
 
-    /* Controls layout */
+    /* 컨트롤 패널 */
     #controls {
       display: flex;
       flex-wrap: wrap;
@@ -105,138 +126,161 @@
       gap: 5px;
     }
     .sliderGroup label {
-      min-width: 80px;
+      min-width: 70px;
       text-align: right;
     }
     .sliderGroup input[type="range"] {
-      width: 130px;
+      width: 80px;
+    }
+    .sliderValue {
+      width: 32px;
+      text-align: center;
+      color: #333;
     }
 
-    /* Export code output area */
+    /* Reset 버튼 조금 강조 */
+    #resetBtn {
+      color: #fff;
+      background: #d33;
+      border: none;
+      padding: 5px 10px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    #resetBtn:hover {
+      background: #b22;
+    }
+
+    /* 코드 출력은 항상 표시, 우측 하단을 절반 차지 */
     #codeOutput {
       width: 100%;
-      height: 150px;
-      margin-top: auto;
+      height: 100%; /* 남은 공간 전부 차지 */
       font-family: monospace;
       white-space: pre;
       box-sizing: border-box;
-    }
-
-    /* Demo description text (for SEO) */
-    .demo-description {
-      margin-bottom: 20px;
-      line-height: 1.4;
+      border: 1px solid #ccc;
+      resize: none;
+      padding: 10px;
+      overflow: auto;
     }
   </style>
 </head>
 <body>
-
-  <!-- [SEO] Page Header -->
-  <header>
-    <h1>Canvas Track & Fourier Demo</h1>
-  </header>
-
-  <!-- [SEO] Brief description in English -->
-  <section class="demo-description">
-    <p>
-      This page allows you to <strong>draw a path on the canvas</strong> and then apply a <strong>Fourier transform</strong> to analyze and animate it in real-time.
-    </p>
-    <p>
-      You can explore <em>Catmull-Rom interpolation, sampling, and DFT</em>,  
-      then watch a <mark>green ball</mark> move according to the <strong>Fourier coefficients</strong> derived from your custom curve.
-    </p>
-  </section>
-
-  <main id="mainWrapper">
-    <!-- Left: Canvas & anchor points -->
+  <div id="mainWrapper">
+    <!-- 왼쪽(캔버스) -->
     <div id="leftPane">
+      <div id="drawHint">이곳을 드래그하여<br>경로를 그려주세요</div>
       <canvas id="myCanvas"></canvas>
       <div id="anchorsContainer"></div>
       <div id="greenCircle"></div>
     </div>
 
-    <!-- Right: Control panel -->
-    <aside id="rightPane">
-      <div id="controls">
-        <div class="sliderGroup">
-          <label for="anchorSlider">Anchor space:</label>
-          <input type="range" id="anchorSlider" min="5" max="100" value="20" />
+    <!-- 오른쪽(컨트롤 + 코드) -->
+    <div id="rightPane">
+      <div id="controlsWrapper">
+        <div id="helpPanel">
+          <strong>사용 안내</strong><br>
+          1) 왼쪽 캔버스에 마우스로 폐곡선을 그립니다.<br>
+          2) <em>Convert & Play</em> 버튼으로 변환+재생.<br>
+          3) 중간에 슬라이더 조정 시 즉시 업데이트.
         </div>
 
-        <div class="sliderGroup">
-          <label for="freqSlider">Max freq:</label>
-          <input type="range" id="freqSlider" min="1" max="50" value="10" />
-          <span id="freqValue">10</span>
-        </div>
+        <div id="controls">
+          <!-- 앵커 간격 -->
+          <div class="sliderGroup">
+            <label for="anchorSlider">앵커 간격:</label>
+            <input type="range" id="anchorSlider" min="5" max="100" value="20" />
+            <span id="anchorValue" class="sliderValue">20</span>
+          </div>
 
-        <div class="sliderGroup">
-          <label for="speedSlider">Speed:</label>
-          <input type="range" id="speedSlider" min="0.1" max="5" step="0.1" value="1" />
-          <span id="speedValue">1.0</span>
-        </div>
+          <!-- 주파수 수 -->
+          <div class="sliderGroup">
+            <label for="freqSlider">주파수 수:</label>
+            <input type="range" id="freqSlider" min="1" max="50" value="10" />
+            <span id="freqValue" class="sliderValue">10</span>
+          </div>
 
-        <button id="convertBtn">Convert</button>
-        <button id="playBtn">Play</button>
-        <button id="resampleBtn">Resample</button>
-        <button id="exportBtn">Export</button>
-        <button id="resetBtn">Reset</button>
+          <!-- 속도 -->
+          <div class="sliderGroup">
+            <label for="speedSlider">속도:</label>
+            <input type="range" id="speedSlider" min="0.1" max="5" step="0.1" value="1" />
+            <span id="speedValue" class="sliderValue">1.0</span>
+          </div>
+
+          <!-- 앵커/파란선 토글 체크박스 -->
+          <div>
+            <input type="checkbox" id="anchorToggleCB" checked />
+            <label for="anchorToggleCB">앵커/파란선</label>
+          </div>
+
+          <!-- 변환 + 재생 통합 버튼 -->
+          <button id="convertPlayBtn">Convert & Play</button>
+          <!-- 리셋 버튼 -->
+          <button id="resetBtn">Reset</button>
+        </div>
       </div>
 
-      <textarea id="codeOutput" readonly></textarea>
-    </aside>
-  </main>
-
-  <footer>
-    <p style="text-align:center; font-size:0.9em; color:#666;">
-      &copy; 2023 DemoSite. All rights reserved.
-    </p>
-  </footer>
+      <!-- 코드 출력 (우측 하단 절반) -->
+      <div id="codeOutputWrapper">
+        <textarea id="codeOutput" readonly></textarea>
+      </div>
+    </div>
+  </div>
 
   <script>
     /*****************************************************************
-     * Canvas & Fourier Logic (JavaScript)
+     * 전역 변수
      *****************************************************************/
-    const canvas = document.getElementById("myCanvas");
-    const ctx    = canvas.getContext("2d");
+    const canvas             = document.getElementById("myCanvas");
+    const ctx                = canvas.getContext("2d");
+    const leftPane           = document.getElementById("leftPane");
+    const anchorsContainer   = document.getElementById("anchorsContainer");
+    const greenCircle        = document.getElementById("greenCircle");
+    const drawHint           = document.getElementById("drawHint");
 
-    const leftPane         = document.getElementById("leftPane");
-    const anchorsContainer = document.getElementById("anchorsContainer");
-    const greenCircle      = document.getElementById("greenCircle");
+    const anchorSlider       = document.getElementById("anchorSlider");
+    const anchorValue        = document.getElementById("anchorValue");
+    const freqSlider         = document.getElementById("freqSlider");
+    const freqValue          = document.getElementById("freqValue");
+    const speedSlider        = document.getElementById("speedSlider");
+    const speedValue         = document.getElementById("speedValue");
 
-    const anchorSlider = document.getElementById("anchorSlider");
-    const freqSlider   = document.getElementById("freqSlider");
-    const freqValue    = document.getElementById("freqValue");
-    const speedSlider  = document.getElementById("speedSlider");
-    const speedValue   = document.getElementById("speedValue");
+    const anchorToggleCB     = document.getElementById("anchorToggleCB");
+    const convertPlayBtn     = document.getElementById("convertPlayBtn");
+    const resetBtn           = document.getElementById("resetBtn");
 
-    const convertBtn   = document.getElementById("convertBtn");
-    const playBtn      = document.getElementById("playBtn");
-    const resampleBtn  = document.getElementById("resampleBtn");
-    const exportBtn    = document.getElementById("exportBtn");
-    const resetBtn     = document.getElementById("resetBtn");
-    const codeOutput   = document.getElementById("codeOutput");
+    const codeOutput         = document.getElementById("codeOutput");
 
     let CANVAS_W = 0;
     let CANVAS_H = 0;
     let centerX  = 0;
     let centerY  = 0;
 
+    // 트랙 생성
     let drawingMode         = true;
     let isMouseDown         = false;
-    let points              = [];
-    let anchorPoints        = [];
+    let points              = [];  // 마우스 드래그 점들
+    let anchorPoints        = [];  // 스플라인 앵커점
     let currentAnchorSpacing= 20;
 
+    // Fourier
     let fourierCoeffsX = {};
     let fourierCoeffsY = {};
     let fourierN       = 0;
     let maxFrequencyUsed = 10;
 
+    // 애니메이션
     let animationFrameId = null;
     let startTime        = null;
     let animationSpeed   = 1.0;
     let trailPoints      = [];
 
+    // 앵커/파란선 표시 여부
+    let showAnchorLine   = true;
+
+    /*****************************************************************
+     * 초기화 & 이벤트
+     *****************************************************************/
     function resizeCanvas() {
       canvas.width  = leftPane.clientWidth;
       canvas.height = leftPane.clientHeight;
@@ -251,7 +295,6 @@
 
     window.addEventListener("load", () => {
       resizeCanvas();
-      freqSlider.disabled = false;
     });
     window.addEventListener("resize", () => {
       resizeCanvas();
@@ -261,104 +304,134 @@
       if (!drawingMode) return;
       isMouseDown = true;
       const { offsetX, offsetY } = e;
-      points = [{ x: offsetX - centerX, y: offsetY - centerY }];
+      const x = offsetX - centerX;
+      const y = offsetY - centerY;
+      points = [{ x, y }];
     });
 
     canvas.addEventListener("mousemove", (e) => {
       if (!drawingMode || !isMouseDown) return;
       const { offsetX, offsetY } = e;
-      points.push({ x: offsetX - centerX, y: offsetY - centerY });
+      const x = offsetX - centerX;
+      const y = offsetY - centerY;
+      points.push({ x, y });
       redrawTempLine(points);
     });
 
     canvas.addEventListener("mouseup", () => {
       if (!drawingMode) return;
       isMouseDown = false;
-
       if (points.length > 1) {
-        points.push(points[0]);
+        points.push(points[0]); // 폐곡선
         redrawTempLine(points);
       }
       drawingMode = false;
       createAnchorsFromRawPoints();
+      drawHint.style.display = "none";
     });
 
+    /*****************************************************************
+     * 슬라이더/체크박스
+     *****************************************************************/
     anchorSlider.addEventListener("input", (e) => {
       currentAnchorSpacing = parseInt(e.target.value);
+      anchorValue.textContent = currentAnchorSpacing;
       if (!drawingMode && points.length > 1) {
         createAnchorsFromRawPoints();
       }
     });
+
     freqSlider.addEventListener("input", (e) => {
       maxFrequencyUsed = parseInt(e.target.value);
       freqValue.innerText = maxFrequencyUsed;
+      if (fourierCoeffsX.a && fourierCoeffsX.a.length > 0) {
+        recalcFourierAndRestart();
+      }
     });
+
     speedSlider.addEventListener("input", (e) => {
       animationSpeed = parseFloat(e.target.value);
       speedValue.innerText = animationSpeed.toFixed(1);
+      if (fourierCoeffsX.a && fourierCoeffsX.a.length > 0) {
+        recalcFourierAndRestart();
+      }
     });
 
-    convertBtn.addEventListener("click", () => {
+    anchorToggleCB.addEventListener("change", (e) => {
+      showAnchorLine = e.target.checked;
+      anchorsContainer.style.display = showAnchorLine ? "block" : "none";
+      drawScene(); 
+    });
+
+    /*****************************************************************
+     * Convert & Play 통합
+     *****************************************************************/
+    convertPlayBtn.addEventListener("click", () => {
       if (anchorPoints.length < 2) {
-        alert("No path found. Draw something first!");
+        alert("경로가 없습니다. 먼저 캔버스에 경로를 그려보세요.");
         return;
       }
       const uniquePoints = anchorPoints.slice(0, anchorPoints.length - 1);
       doDFT(uniquePoints);
-      alert("Fourier transform completed!");
-      freqSlider.disabled = true;
-    });
 
-    playBtn.addEventListener("click", () => {
-      if (!fourierCoeffsX.a || fourierCoeffsX.a.length === 0) {
-        alert("Please run Convert first!");
-        return;
-      }
-      freqSlider.disabled = true;
       trailPoints = [];
       cancelAnimationFrame(animationFrameId);
       startTime = null;
       greenCircle.style.display = "block";
       animate();
+
+      alert("Fourier 변환 후 재생합니다!");
     });
 
-    resampleBtn.addEventListener("click", () => {
-      if (anchorPoints.length < 2) {
-        alert("Not enough anchor points to resample.");
-        return;
-      }
-      const uniquePoints = anchorPoints.slice(0, anchorPoints.length - 1);
-      createAnchorsFromAnchors(uniquePoints);
-    });
-
-    exportBtn.addEventListener("click", () => {
-      if (!fourierCoeffsX.a || fourierCoeffsX.a.length === 0) {
-        alert("Please run Convert first!");
-        return;
-      }
-      codeOutput.value = generateFunctionCode();
-    });
-
+    /*****************************************************************
+     * Reset 버튼
+     *****************************************************************/
     resetBtn.addEventListener("click", () => {
+      // 1) 애니메이션 중지
       cancelAnimationFrame(animationFrameId);
       animationFrameId = null;
 
-      freqSlider.disabled = false;
-
+      // 2) 주요 상태들 초기화
       drawingMode  = true;
       isMouseDown  = false;
       points       = [];
       anchorPoints = [];
       trailPoints  = [];
+
       fourierCoeffsX = {};
       fourierCoeffsY = {};
-      fourierN     = 0;
+      fourierN       = 0;
 
+      // 3) DOM & UI 정리
       anchorsContainer.innerHTML = "";
-      greenCircle.style.display = "none";
+      greenCircle.style.display  = "none";
+      drawHint.style.display     = "block";
+      codeOutput.value           = "";
+
+      // 4) 캔버스/그리드 다시 그리기
       clearCanvas();
+      drawScene();  // <-- 그리드를 다시 보이게
     });
 
+    /*****************************************************************
+     * (중간에 파라미터 바뀌었을 때) 재계산 + 재시작
+     *****************************************************************/
+    function recalcFourierAndRestart() {
+      const uniquePoints = anchorPoints.slice(0, anchorPoints.length - 1);
+      doDFT(uniquePoints);
+
+      trailPoints = [];
+      cancelAnimationFrame(animationFrameId);
+      startTime = null;
+
+      if (greenCircle.style.display === "block") {
+        animate();
+      }
+    }
+
+    /*****************************************************************
+     * 임시 라인 (마우스 드래그)
+     *****************************************************************/
     function redrawTempLine(pts) {
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
       drawGrid();
@@ -374,22 +447,29 @@
       ctx.restore();
     }
 
+    /*****************************************************************
+     * 그리드 (100px 간격의 얇은 선 + 중앙축은 두껍게)
+     *****************************************************************/
     function drawGrid() {
-      const step = 50;
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
       ctx.save();
       ctx.translate(centerX, centerY);
 
-      // thin grid lines
+      const step = 100; // [NEW] 100픽셀 간격
+
+      // 얇은 바둑판 라인
       ctx.beginPath();
       ctx.strokeStyle = "#ccc";
       ctx.lineWidth = 1;
+
+      // 수직 라인
       for (let x = 0; x <= centerX; x += step) {
         ctx.moveTo(x, -centerY);
         ctx.lineTo(x, centerY);
         ctx.moveTo(-x, -centerY);
         ctx.lineTo(-x, centerY);
       }
+      // 수평 라인
       for (let y = 0; y <= centerY; y += step) {
         ctx.moveTo(-centerX, y);
         ctx.lineTo(centerX, y);
@@ -398,7 +478,7 @@
       }
       ctx.stroke();
 
-      // center axes
+      // 중앙축(좀 더 두껍게)
       ctx.beginPath();
       ctx.moveTo(-centerX, 0);
       ctx.lineTo(centerX, 0);
@@ -411,22 +491,14 @@
       ctx.restore();
     }
 
+    /*****************************************************************
+     * Catmull-Rom 샘플링
+     *****************************************************************/
     function createAnchorsFromRawPoints() {
       anchorsContainer.innerHTML = "";
       clearCanvas();
+
       anchorPoints = sampleCatmullRom(points, currentAnchorSpacing);
-
-      anchorPoints.forEach((p, idx) => {
-        if (idx === anchorPoints.length - 1 && idx !== 0) return;
-        createAnchorDOM(p.x, p.y, idx);
-      });
-      drawScene();
-    }
-
-    function createAnchorsFromAnchors(inputAnchors) {
-      anchorsContainer.innerHTML = "";
-      clearCanvas();
-      anchorPoints = sampleCatmullRom(inputAnchors, currentAnchorSpacing);
 
       anchorPoints.forEach((p, idx) => {
         if (idx === anchorPoints.length - 1 && idx !== 0) return;
@@ -453,14 +525,13 @@
       }
 
       let pts = [...pointsArr];
-      if (pts.length > 1
-       && !(pts[pts.length - 1].x === pts[0].x && pts[pts.length - 1].y === pts[0].y)) {
-        pts.push(pts[0]);
+      if (pts.length > 1 &&
+          !(pts[pts.length - 1].x === pts[0].x && pts[pts.length - 1].y === pts[0].y)) {
+        pts.push(pts[0]); // 폐곡선
       }
 
       let sampledPoints = [];
       const nSamples = 20;
-
       for (let i = 0; i < pts.length - 1; i++) {
         const p0 = pts[(i - 1 + pts.length) % pts.length];
         const p1 = pts[i];
@@ -491,6 +562,9 @@
       return newAnchors;
     }
 
+    /*****************************************************************
+     * 앵커 DOM
+     *****************************************************************/
     function createAnchorDOM(cx, cy, index) {
       const anchor = document.createElement("div");
       anchor.className = "anchor";
@@ -526,7 +600,6 @@
         if (idx === 0 && anchorPoints.length > 1) {
           anchorPoints[anchorPoints.length - 1] = { x: cX, y: cY };
         }
-
         drawScene();
       });
 
@@ -554,6 +627,9 @@
       });
     }
 
+    /*****************************************************************
+     * 장면 그리기
+     *****************************************************************/
     function clearCanvas() {
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
     }
@@ -561,7 +637,9 @@
     function drawScene() {
       clearCanvas();
       drawGrid();
-      drawSpline();
+      if (showAnchorLine) {
+        drawSpline();
+      }
       drawTrail();
     }
 
@@ -595,6 +673,9 @@
       ctx.restore();
     }
 
+    /*****************************************************************
+     * DFT (DC 항 별도 처리)
+     *****************************************************************/
     function doDFT(pts) {
       const N = pts.length;
       const xArr = pts.map(p => p.x);
@@ -605,7 +686,21 @@
       let aY = new Array(N).fill(0);
       let bY = new Array(N).fill(0);
 
-      for (let n = 0; n < N; n++) {
+      // n=0 (DC, 평균) 항 별도 계산
+      {
+        let sumX = 0, sumY = 0;
+        for (let k = 0; k < N; k++) {
+          sumX += xArr[k];
+          sumY += yArr[k];
+        }
+        aX[0] = sumX / N; 
+        bX[0] = 0;        
+        aY[0] = sumY / N;
+        bY[0] = 0;
+      }
+
+      // n >= 1 부분 (2/N)
+      for (let n = 1; n < N; n++) {
         let sumCosX = 0, sumSinX = 0;
         let sumCosY = 0, sumSinY = 0;
         for (let k = 0; k < N; k++) {
@@ -624,8 +719,13 @@
       fourierCoeffsX = { a: aX, b: bX };
       fourierCoeffsY = { a: aY, b: bY };
       fourierN = N;
+
+      codeOutput.value = generateFunctionCode();
     }
 
+    /*****************************************************************
+     * 애니메이션
+     *****************************************************************/
     function animate(timestamp) {
       if (!startTime) startTime = timestamp;
       const elapsed = (timestamp - startTime) / 1000;
@@ -639,7 +739,6 @@
       const paneRect = leftPane.getBoundingClientRect();
       const screenX  = paneRect.left + centerX + x;
       const screenY  = paneRect.top  + centerY + y;
-      // Adjust to make the circle's center match (x, y)
       greenCircle.style.left = (screenX - 5) + "px";
       greenCircle.style.top  = (screenY - 5) + "px";
 
@@ -647,9 +746,11 @@
     }
 
     function getXY(t) {
-      let x = 0, y = 0;
+      let x = fourierCoeffsX.a ? fourierCoeffsX.a[0] : 0;
+      let y = fourierCoeffsY.a ? fourierCoeffsY.a[0] : 0;
       const limit = Math.min(maxFrequencyUsed, fourierN - 1);
-      for (let n = 0; n <= limit; n++) {
+
+      for (let n = 1; n <= limit; n++) {
         x += fourierCoeffsX.a[n] * Math.cos(n * t)
            + fourierCoeffsX.b[n] * Math.sin(n * t);
         y += fourierCoeffsY.a[n] * Math.cos(n * t)
@@ -658,23 +759,32 @@
       return { x, y };
     }
 
+    /*****************************************************************
+     * 코드 생성 (x(t), y(t))
+     *****************************************************************/
     function generateFunctionCode() {
-      const aX = fourierCoeffsX.a;
-      const bX = fourierCoeffsX.b;
-      const aY = fourierCoeffsY.a;
-      const bY = fourierCoeffsY.b;
-      const N  = fourierN;
+      const aX = fourierCoeffsX.a || [];
+      const bX = fourierCoeffsX.b || [];
+      const aY = fourierCoeffsY.a || [];
+      const bY = fourierCoeffsY.b || [];
+      const N  = fourierN || 0;
       const limit = Math.min(maxFrequencyUsed, N - 1);
 
-      let xFunc = "function x(t) {\n  let result = 0;\n";
-      for (let n = 0; n <= limit; n++) {
+      if (N < 1 || !aX.length) {
+        return "// 아직 변환되지 않았습니다.";
+      }
+
+      let xFunc = "function x(t) {\n";
+      xFunc += `  let result = ${aX[0].toFixed(5)};\n`; 
+      for (let n = 1; n <= limit; n++) {
         xFunc += `  result += ${aX[n].toFixed(5)} * Math.cos(${n} * t)`
                + ` + ${bX[n].toFixed(5)} * Math.sin(${n} * t);\n`;
       }
       xFunc += "  return result;\n}";
 
-      let yFunc = "function y(t) {\n  let result = 0;\n";
-      for (let n = 0; n <= limit; n++) {
+      let yFunc = "function y(t) {\n";
+      yFunc += `  let result = ${aY[0].toFixed(5)};\n`;
+      for (let n = 1; n <= limit; n++) {
         yFunc += `  result += ${aY[n].toFixed(5)} * Math.cos(${n} * t)`
                + ` + ${bY[n].toFixed(5)} * Math.sin(${n} * t);\n`;
       }
